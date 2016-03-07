@@ -31,6 +31,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <sstream>
+#include <iostream>
+#include <fstream>
 
 #include "rplidar.h" //RPLIDAR standard sdk, all-in-one header
 
@@ -69,6 +73,10 @@ int main(int argc, const char * argv[]) {
     const char * opt_com_path = NULL;
     _u32         opt_com_baudrate = 115200;
     u_result     op_result;
+	int file = 1;
+	int flag = 1;
+	int x, y;
+	std::string fname;
 
     // read serial port from the command line...
     if (argc>1) opt_com_path = argv[1]; // or set to a fixed value: e.g. "com3" 
@@ -114,23 +122,45 @@ int main(int argc, const char * argv[]) {
     drv->startScan();
 
     // fetech result and print it out...
-    while (1) {
-        rplidar_response_measurement_node_t nodes[360*2];
-        size_t   count = _countof(nodes);
+	while (1) {
+		if (flag != 0) {
+			std::cout << "Enter scan origin offset x y (mm)" << std::endl;
+			std::cin >> x >> y;
 
-        op_result = drv->grabScanData(nodes, count);
+			std::ofstream myfile;
+			fname = "scan_";
+			std::string String = static_cast<std::ostringstream*>(&(std::ostringstream() << file))->str();
+			fname.append(String);
 
-        if (IS_OK(op_result)) {
-            drv->ascendScanData(nodes, count);
-            for (int pos = 0; pos < (int)count ; ++pos) {
-                printf("%s theta: %03.2f Dist: %08.2f Q: %d \n", 
-                    (nodes[pos].sync_quality & RPLIDAR_RESP_MEASUREMENT_SYNCBIT) ?"S ":"  ", 
-                    (nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT)/64.0f,
-                    nodes[pos].distance_q2/4.0f,
-                    nodes[pos].sync_quality >> RPLIDAR_RESP_MEASUREMENT_QUALITY_SHIFT);
-            }
-        }
+			myfile.open(fname);		//open file with name "scan_#"
+			file++;
 
+			rplidar_response_measurement_node_t nodes[360 * 2];
+			size_t   count = _countof(nodes);
+
+			op_result = drv->grabScanData(nodes, count);
+			myfile << x << '\0' << y << '\0' << std::endl;
+
+			if (IS_OK(op_result)) {
+				drv->ascendScanData(nodes, count);
+				for (int pos = 0; pos < (int)count; ++pos) {
+					//myfile << (nodes[pos].sync_quality & RPLIDAR_RESP_MEASUREMENT_SYNCBIT) << '\0';
+					myfile << (nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f << '\0';
+					myfile << (nodes[pos].distance_q2 / 4.0f) << '\0' << std::endl;
+					//myfile << (nodes[pos].sync_quality >> RPLIDAR_RESP_MEASUREMENT_QUALITY_SHIFT) << '\0' << std::endl;
+					
+					printf("%s theta: %03.2f Dist: %08.2f Q: %d \n",
+						(nodes[pos].sync_quality & RPLIDAR_RESP_MEASUREMENT_SYNCBIT) ? "S " : "  ",
+						(nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f,
+						nodes[pos].distance_q2 / 4.0f,
+						nodes[pos].sync_quality >> RPLIDAR_RESP_MEASUREMENT_QUALITY_SHIFT);
+				}
+			}
+			myfile.close();
+			std::cout << "take next scan? (0) to quit ";		//check if there are more scans to take
+			std::cin >> flag;
+		}
+		else break;
     }
 
     // done!
