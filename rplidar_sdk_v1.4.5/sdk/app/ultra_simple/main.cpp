@@ -35,8 +35,15 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include <cmath>
 
 #include "rplidar.h" //RPLIDAR standard sdk, all-in-one header
+#include "utils.h"
+
+#define FLOAT
+#ifndef FLOAT
+#define INT
+#endif
 
 #ifndef _countof
 #define _countof(_Array) (int)(sizeof(_Array) / sizeof(_Array[0]))
@@ -44,6 +51,12 @@
 
 using namespace rp::standalone::rplidar;
 
+void convertXY(std::string FILENAME) {
+
+}
+void convertPolar() {
+
+}
 
 bool checkRPLIDARHealth(RPlidarDriver * drv)
 {
@@ -73,9 +86,15 @@ int main(int argc, const char * argv[]) {
     const char * opt_com_path = NULL;
     _u32         opt_com_baudrate = 115200;
     u_result     op_result;
-	int file = 1;
-	int flag = 1;
-	int x, y;
+	int file = 1, flag = 1, num = 4;
+	float Ox, Oy;
+	float angle, distance;
+	float x, y, r;
+#ifndef FLOAT
+	int theta;
+#else
+	float theta;
+#endif
 	std::string fname;
 
     // read serial port from the command line...
@@ -125,43 +144,101 @@ int main(int argc, const char * argv[]) {
 	while (1) {
 		if (flag != 0) {
 			std::cout << "Enter scan origin offset x y (mm)" << std::endl;
-			std::cin >> x >> y;
+			std::cin >> Ox >> Oy;
+			while (num > 0) {
+				std::ofstream myfile;
+				fname = "scan";
+				//std::string String = static_cast<std::ostringstream*>(&(std::ostringstream() << file))->str();
+				//fname.append(String);
 
-			std::ofstream myfile;
-			fname = "scan_";
-			std::string String = static_cast<std::ostringstream*>(&(std::ostringstream() << file))->str();
-			fname.append(String);
+				myfile.open(fname, std::fstream::out | std::fstream::app);		//open file with name "scan_#"
+				//file++;
 
-			myfile.open(fname);		//open file with name "scan_#"
-			file++;
+				rplidar_response_measurement_node_t nodes[360 * 2];
+				size_t   count = _countof(nodes);
 
-			rplidar_response_measurement_node_t nodes[360 * 2];
-			size_t   count = _countof(nodes);
+				op_result = drv->grabScanData(nodes, count);
+				//myfile << Ox << '\0' << Oy << '\0' << std::endl;
 
-			op_result = drv->grabScanData(nodes, count);
-			myfile << x << '\0' << y << '\0' << std::endl;
+				if (IS_OK(op_result)) {
+					drv->ascendScanData(nodes, count);
+					for (int pos = 0; pos < (int)count; ++pos) {
+						r = (nodes[pos].distance_q2 / 4.0f);
+#ifdef FLOAT
+						theta = ((nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f);
+						std::cout << theta << ' ' << r << std::endl;
+						x = r * cos(theta*0.0174533);
+						y = r * sin(theta*0.0174533);
+						std::cout << '\t' << x << ' ' << y << std::endl;
+#else
+						theta = (int)((nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f);
+#endif
+						x = x + Ox;
+						y = y + Oy;
 
-			if (IS_OK(op_result)) {
-				drv->ascendScanData(nodes, count);
-				for (int pos = 0; pos < (int)count; ++pos) {
-					//myfile << (nodes[pos].sync_quality & RPLIDAR_RESP_MEASUREMENT_SYNCBIT) << '\0';
-					myfile << (nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f << '\0';
-					myfile << (nodes[pos].distance_q2 / 4.0f) << '\0' << std::endl;
-					//myfile << (nodes[pos].sync_quality >> RPLIDAR_RESP_MEASUREMENT_QUALITY_SHIFT) << '\0' << std::endl;
-					
-					printf("%s theta: %03.2f Dist: %08.2f Q: %d \n",
-						(nodes[pos].sync_quality & RPLIDAR_RESP_MEASUREMENT_SYNCBIT) ? "S " : "  ",
-						(nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f,
-						nodes[pos].distance_q2 / 4.0f,
-						nodes[pos].sync_quality >> RPLIDAR_RESP_MEASUREMENT_QUALITY_SHIFT);
+						angle = atan2(y,x);
+						angle = angle * 57.2958;
+						distance = sqrt(x*x + y*y);
+
+						//myfile << (nodes[pos].sync_quality & RPLIDAR_RESP_MEASUREMENT_SYNCBIT) << '\0';
+						myfile << angle << ' ';
+						myfile << distance << std::endl;
+						//myfile << (nodes[pos].sync_quality >> RPLIDAR_RESP_MEASUREMENT_QUALITY_SHIFT) << ' ';
+						//myfile << theta << ' ';
+						//myfile << r << ' ' << std::endl;
+						
+/*						printf("%s theta: %03.2f Dist: %08.2f Q: %d \n",
+							(nodes[pos].sync_quality & RPLIDAR_RESP_MEASUREMENT_SYNCBIT) ? "S " : "  ",
+							(nodes[pos].angle_q6_checkbit >> RPLIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f,
+							nodes[pos].distance_q2 / 4.0f,
+							nodes[pos].sync_quality >> RPLIDAR_RESP_MEASUREMENT_QUALITY_SHIFT);
+*/						}
 				}
+				myfile.close();
+				num--;
 			}
-			myfile.close();
+			num = 3;
 			std::cout << "take next scan? (0) to quit ";		//check if there are more scans to take
 			std::cin >> flag;
 		}
 		else break;
     }
+/*
+	while (1) {
+		std::ifstream infile("scan.txt");
+		std::ofstream myfile;
+		std::string line;
+
+		//_u8 quality;
+		float angle;
+		float distance;
+		float x2, y2;
+
+		myfile.open("scan", std::fstream::out | std::fstream::app);
+
+		while (std::getline(infile,line)) {
+			std::istringstream iss(line);
+			if (!(iss >> x2 >> y2)) break;
+			std::cout << x2 << ' ' << y2 << std::endl;
+			angle = atan((y2 / x2));
+			angle = angle * (180 / 3.1415926);
+			distance = sqrt((x2*x2) + (y2*y2));
+
+			if (!(iss >> angle >> distance)) break;
+			angle = round(angle);
+
+			myfile << angle << ' ';
+			myfile << distance << std::endl;
+			printf("Theta: %f Dist: %f \n", angle, distance);
+
+		}
+		myfile.close();
+		std::cout << "2 to quit ";
+		std::cin >> flag;
+		if (flag != 2);
+		else break;
+	}
+	*/
 
     // done!
 on_finished:
