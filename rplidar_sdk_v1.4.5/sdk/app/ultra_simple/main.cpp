@@ -86,7 +86,7 @@ int main(int argc, const char * argv[]) {
     const char * opt_com_path = NULL;
     _u32         opt_com_baudrate = 115200;
     u_result     op_result;
-	int file = 1, flag = 1, num = 4;
+	int file = 1, flag = 1, num = 1;
 	float Ox, Oy;
 	float angle, distance;
 	float x, y, r;
@@ -197,7 +197,7 @@ int main(int argc, const char * argv[]) {
 				myfile.close();
 				num--;
 			}
-			num = 3;
+			num = 1;
 			std::cout << "take next scan? (0) to quit ";		//check if there are more scans to take
 			std::cin >> flag;
 		}
